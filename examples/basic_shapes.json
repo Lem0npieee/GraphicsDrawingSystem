@@ -1,0 +1,75 @@
+{
+  "version": "1.0",
+  "metadata": {
+    "created_by": "2D图形绘制系统",
+    "shape_count": 5,
+    "description": "示例项目 - 基本图形展示"
+  },
+  "shapes": [
+    {
+      "type": "Point",
+      "x": 100,
+      "y": 100,
+      "color": "red",
+      "fill_color": "red",
+      "line_width": 1,
+      "visible": true,
+      "size": 5
+    },
+    {
+      "type": "Line",
+      "x": 200,
+      "y": 150,
+      "color": "blue",
+      "fill_color": null,
+      "line_width": 2,
+      "visible": true,
+      "x1": 150,
+      "y1": 100,
+      "x2": 250,
+      "y2": 200
+    },
+    {
+      "type": "Rectangle",
+      "x": 175,
+      "y": 275,
+      "color": "green",
+      "fill_color": "lightgreen",
+      "line_width": 3,
+      "visible": true,
+      "x1": 125,
+      "y1": 225,
+      "x2": 225,
+      "y2": 325,
+      "width": 100,
+      "height": 100
+    },
+    {
+      "type": "Circle",
+      "x": 350,
+      "y": 200,
+      "color": "purple",
+      "fill_color": "lavender",
+      "line_width": 2,
+      "visible": true,
+      "radius": 50
+    },
+    {
+      "type": "Polygon",
+      "x": 350,
+      "y": 100,
+      "color": "orange",
+      "fill_color": "lightyellow",
+      "line_width": 2,
+      "visible": true,
+      "points": [
+        [300, 50],
+        [400, 50],
+        [425, 100],
+        [400, 150],
+        [300, 150],
+        [275, 100]
+      ]
+    }
+  ]
+}

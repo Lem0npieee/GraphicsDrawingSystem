@@ -1,0 +1,14 @@
+# 2D图形绘制系统依赖包
+# 基础GUI库（Python内置，无需安装）
+# tkinter
+
+# 图像处理库
+Pillow>=9.0.0
+
+# 打包工具
+PyInstaller>=5.0.0
+
+# 开发工具（可选）
+# pytest>=7.0.0
+# black>=22.0.0
+# flake8>=4.0.0

@@ -1,0 +1,52 @@
+{
+  "version": "1.0",
+  "metadata": {
+    "created_by": "2D图形绘制系统",
+    "shape_count": 3,
+    "description": "贝塞尔曲线示例 - 展示曲线绘制功能"
+  },
+  "shapes": [
+    {
+      "type": "BezierCurve",
+      "x": 250,
+      "y": 150,
+      "color": "blue",
+      "fill_color": null,
+      "line_width": 3,
+      "visible": true,
+      "p0": [100, 200],
+      "p1": [100, 50],
+      "p2": [400, 50],
+      "p3": [400, 200],
+      "curve_resolution": 50
+    },
+    {
+      "type": "BezierCurve",
+      "x": 300,
+      "y": 250,
+      "color": "red",
+      "fill_color": null,
+      "line_width": 2,
+      "visible": true,
+      "p0": [150, 250],
+      "p1": [200, 180],
+      "p2": [400, 320],
+      "p3": [450, 250],
+      "curve_resolution": 50
+    },
+    {
+      "type": "BezierCurve",
+      "x": 300,
+      "y": 350,
+      "color": "green",
+      "fill_color": null,
+      "line_width": 4,
+      "visible": true,
+      "p0": [200, 350],
+      "p1": [250, 300],
+      "p2": [350, 400],
+      "p3": [400, 350],
+      "curve_resolution": 50
+    }
+  ]
+}
