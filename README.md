@@ -64,7 +64,3 @@ python main.py
 - Tkinter (GUI)
 - Pillow (图像处理)
 - PyInstaller (打包)
-
-## 许可证
-
-MIT License
