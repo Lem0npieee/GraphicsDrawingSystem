@@ -408,13 +408,7 @@ class DrawingManager:
     def start_brush_stroke(self, x, y):
         """开始笔刷轨迹"""
         self.current_brush_stroke = BrushStroke(brush_type=self.current_brush_type)
-        
-        # 橡皮擦强制使用白色
-        if self.current_brush_type == "brush_eraser":
-            self.current_brush_stroke.color = "white"
-        else:
-            self.current_brush_stroke.color = self.current_color
-            
+        self.current_brush_stroke.color = self.current_color
         self.current_brush_stroke.brush_size = self.current_brush_size
         self.current_brush_stroke.add_point(x, y)
         self.is_drawing = True

@@ -141,19 +141,101 @@ class PropertyPanel:
         
     def update_colors_from_shape(self, shape):
         """从形状更新颜色显示"""
+        # 更新线条颜色
         if hasattr(shape, 'color') and shape.color:
             self.current_color = shape.color
             self.color_frame.config(bg=self.current_color)
         
-        if hasattr(shape, 'fill_color') and shape.fill_color:
-            self.current_fill_color = shape.fill_color
-            self.fill_color_frame.config(bg=self.current_fill_color)
-            self.no_fill_var.set(False)
+        # 根据图形类型显示/隐藏填充颜色控件
+        from ..shapes.point import Point
+        if isinstance(shape, Point):
+            # 点类型：隐藏填充颜色相关控件
+            self.hide_fill_controls()
         else:
-            self.current_fill_color = None
-            self.fill_color_frame.config(bg="white", relief=tk.SUNKEN)
-            self.no_fill_var.set(True)
+            # 其他图形：显示填充颜色控件
+            self.show_fill_controls()
+            if hasattr(shape, 'fill_color') and shape.fill_color:
+                self.current_fill_color = shape.fill_color
+                self.fill_color_frame.config(bg=self.current_fill_color)
+                self.no_fill_var.set(False)
+            else:
+                self.current_fill_color = None
+                self.fill_color_frame.config(bg="white", relief=tk.SUNKEN)
+                self.no_fill_var.set(True)
             
         if hasattr(shape, 'line_width') and shape.line_width:
             self.line_width_var.set(shape.line_width)
             self.line_width_label.config(text=f"{shape.line_width} 像素")
+    
+    def hide_fill_controls(self):
+        """隐藏填充颜色相关控件"""
+        # 隐藏填充颜色标签、颜色框和无填充复选框
+        for widget in self.color_frame.master.winfo_children():
+            if hasattr(widget, 'cget'):
+                try:
+                    if widget.cget('text') == '填充颜色:':
+                        widget.pack_forget()
+                        # 找到并隐藏对应的颜色框和复选框
+                        widget_list = list(self.color_frame.master.winfo_children())
+                        widget_index = widget_list.index(widget)
+                        if widget_index + 1 < len(widget_list):
+                            widget_list[widget_index + 1].pack_forget()  # 颜色框
+                        if widget_index + 2 < len(widget_list):
+                            widget_list[widget_index + 2].pack_forget()  # 复选框
+                        break
+                except:
+                    pass
+    
+    def show_fill_controls(self):
+        """显示填充颜色相关控件"""
+        # 重建填充颜色控件（简单的方法是重新pack）
+        widgets_in_color_frame = self.color_frame.master.winfo_children()
+        fill_label_exists = False
+        
+        for widget in widgets_in_color_frame:
+            if hasattr(widget, 'cget'):
+                try:
+                    if widget.cget('text') == '填充颜色:':
+                        fill_label_exists = True
+                        widget.pack(anchor=tk.W, pady=(10, 0))
+                        break
+                except:
+                    pass
+        
+        # 如果标签不存在，说明控件被销毁了，需要重新创建
+        if not fill_label_exists:
+            self._recreate_fill_controls()
+        else:
+            # 重新显示颜色框和复选框
+            self.fill_color_frame.pack(fill=tk.X, pady=2)
+            # 查找复选框并显示
+            for widget in widgets_in_color_frame:
+                if hasattr(widget, 'cget') and hasattr(widget, 'config'):
+                    try:
+                        if 'text' in widget.keys() and widget.cget('text') == '无填充':
+                            widget.pack(anchor=tk.W, pady=2)
+                            break
+                    except:
+                        pass
+    
+    def _recreate_fill_controls(self):
+        """重新创建填充颜色控件"""
+        color_frame = self.color_frame.master
+        
+        # 填充颜色标签
+        fill_label = ttk.Label(color_frame, text="填充颜色:")
+        fill_label.pack(anchor=tk.W, pady=(10, 0))
+        
+        # 填充颜色框
+        if not hasattr(self, 'fill_color_frame') or not self.fill_color_frame.winfo_exists():
+            self.fill_color_frame = tk.Frame(color_frame, height=30, bg="white")
+            self.fill_color_frame.bind("<Button-1>", self.choose_fill_color)
+        self.fill_color_frame.pack(fill=tk.X, pady=2)
+        
+        # 无填充复选框
+        if not hasattr(self, 'no_fill_var'):
+            self.no_fill_var = tk.BooleanVar(value=False)
+        no_fill_cb = ttk.Checkbutton(color_frame, text="无填充", 
+                                    variable=self.no_fill_var,
+                                    command=self.toggle_fill)
+        no_fill_cb.pack(anchor=tk.W, pady=2)

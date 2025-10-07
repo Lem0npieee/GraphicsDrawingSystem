@@ -23,13 +23,13 @@ class Point(BaseShape):
         x2 = self.x + self.size
         y2 = self.y + self.size
         
-        outline_color = "red" if self.selected else self.color
-        fill = self.fill_color if self.fill_color else self.color
+        # 点只有一个颜色，不区分轮廓和填充
+        point_color = "red" if self.selected else self.color
         
         canvas.create_oval(x1, y1, x2, y2, 
-                          outline=outline_color, 
-                          fill=fill,
-                          width=self.line_width,
+                          outline=point_color, 
+                          fill=point_color,
+                          width=1,  # 点的轮廓线宽固定为1
                           tags="shape")
     
     def contains_point(self, x: float, y: float) -> bool:
@@ -74,7 +74,8 @@ class Point(BaseShape):
         """从字典创建点对象"""
         point = cls(data['x'], data['y'], data.get('size', 3))
         point.color = data.get('color', 'black')
-        point.fill_color = data.get('fill_color')
+        # 点不使用填充颜色，只有一个颜色
+        point.fill_color = None
         point.line_width = data.get('line_width', 1)
         point.visible = data.get('visible', True)
         return point

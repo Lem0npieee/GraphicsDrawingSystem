@@ -55,8 +55,7 @@ class ToolBar:
             ("brush_ballpoint", "圆珠笔", "🖊️"),
             ("brush_spray", "喷雾笔刷", "🖌️"),
             ("brush_pencil", "铅笔", "✏️"),
-            ("brush_highlighter", "荧光笔", "🖍️"),
-            ("brush_eraser", "橡皮擦", "🧽")
+            ("brush_highlighter", "荧光笔", "🖍️")
         ]
         
         self.tool_buttons = {}
@@ -235,7 +234,7 @@ class ToolBar:
         # 创建弹出菜单
         self.brush_menu = tk.Toplevel()
         self.brush_menu.title("笔刷选项")
-        self.brush_menu.geometry("160x160")  # 增加高度以容纳橡皮擦
+        self.brush_menu.geometry("160x130")  # 调整高度
         self.brush_menu.resizable(False, False)
         
         # 设置菜单位置（在展开按钮下方）
