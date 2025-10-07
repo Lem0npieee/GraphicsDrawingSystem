@@ -62,8 +62,5 @@ python main.py
 - Python 3.7+
 - Tkinter (GUI)
 - Pillow (图像处理)
-<<<<<<< HEAD
 - PyInstaller (打包)
-=======
-- PyInstaller (打包)
->>>>>>> 90ce3b52c6d0582349a699d27a421a5787f77a5c
+
