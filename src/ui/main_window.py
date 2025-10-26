@@ -334,6 +334,10 @@ class MainWindow:
         y = self.canvas.canvasy(event.y)
         self.coord_label.config(text=f"坐标: ({int(x)}, {int(y)})")
         
+        # 多边形绘制时的实时预览
+        if self.current_tool == "polygon" and len(self.drawing_manager.polygon_points) > 0:
+            self.drawing_manager.draw_polygon_preview(x, y)
+        
         # 更新鼠标光标
         self.update_cursor(x, y)
         

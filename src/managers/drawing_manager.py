@@ -58,10 +58,22 @@ class DrawingManager:
         # 调整大小相关
         self.resizing = False
         self.resize_handle = ""
+        
+        # 性能优化变量
+        self.temp_update_throttle_ms = 16  # 约60FPS的临时图形更新频率
+        self.last_temp_update_time = 0
+        
+        # 缓存机制：避免重复绘制相同的图形
+        self.shape_cache_valid = False  # 标记已绘制图形是否需要重绘
+        self.last_shape_count = 0  # 上次绘制时的图形数量
         self.resize_shape = None
         
         # 复制粘贴
         self.clipboard = []
+        
+        # 性能优化：预览更新节流
+        self.last_preview_time = 0
+        self.preview_throttle_ms = 50  # 50毫秒更新一次预览
         
     def set_canvas(self, canvas):
         """设置画布"""
@@ -139,6 +151,9 @@ class DrawingManager:
                 self.handle_resize(x, y)
             elif self.dragging:
                 self.handle_drag(x, y)
+        elif self.current_tool == "polygon" and len(self.polygon_points) > 0:
+            # 多边形实时预览：显示从最后一个点到鼠标位置的临时连线
+            self.draw_polygon_preview(x, y)
         elif self.current_tool.startswith("brush_") and self.current_brush_stroke:
             self.continue_brush_stroke(x, y)
         elif self.current_tool == "brush" and self.current_brush_stroke:  # 兼容旧版本
@@ -245,25 +260,178 @@ class DrawingManager:
         self.temp_shape.set_fill_color(self.current_fill_color)
         self.temp_shape.set_line_width(self.current_line_width)
         
+    def bresenham_line(self, x0: int, y0: int, x1: int, y1: int) -> List[Tuple[int, int]]:
+        """
+        Bresenham直线算法
+        返回直线上所有像素点的坐标列表
+        """
+        points = []
+        
+        # 计算增量
+        dx = abs(x1 - x0)
+        dy = abs(y1 - y0)
+        
+        # 确定步进方向
+        sx = 1 if x0 < x1 else -1
+        sy = 1 if y0 < y1 else -1
+        
+        # 初始化误差项
+        err = dx - dy
+        
+        # 当前点
+        x, y = x0, y0
+        
+        while True:
+            # 添加当前点
+            points.append((x, y))
+            
+            # 检查是否到达终点
+            if x == x1 and y == y1:
+                break
+            
+            # 计算新的误差项
+            e2 = 2 * err
+            
+            # X方向步进判断
+            if e2 > -dy:
+                err -= dy
+                x += sx
+            
+            # Y方向步进判断  
+            if e2 < dx:
+                err += dx
+                y += sy
+        
+        return points
+
+    def draw_polygon_line_with_bresenham(self, x0, y0, x1, y1, color, line_width):
+        """使用Bresenham算法绘制多边形的边"""
+        if not self.canvas:
+            return
+            
+        # 转换为整数坐标
+        x0, y0 = int(round(x0)), int(round(y0))
+        x1, y1 = int(round(x1)), int(round(y1))
+        
+        # 使用Bresenham算法计算直线上的所有像素点
+        line_points = self.bresenham_line(x0, y0, x1, y1)
+        
+        # 根据线宽绘制像素点
+        pixel_size = max(1, line_width)
+        half_size = pixel_size // 2
+        
+        for px, py in line_points:
+            # 绘制正方形像素点来模拟像素
+            self.canvas.create_rectangle(
+                px - half_size, py - half_size,
+                px + half_size, py + half_size,
+                fill=color,
+                outline=color,
+                tags="temp"
+            )
+
     def handle_polygon_click(self, x, y):
         """处理多边形点击"""
+        # 如果已有3个或更多点，先检查是否点击了起点来完成多边形
+        if len(self.polygon_points) >= 3:
+            first_point = self.polygon_points[0]
+            if abs(x - first_point[0]) < 15 and abs(y - first_point[1]) < 15:  # 增大检测范围
+                # 点击起点，完成多边形（不添加新点）
+                self.finish_polygon()
+                return
+        
+        # 如果不是点击起点，则添加新点
         self.polygon_points.append((x, y))
         
-        if len(self.polygon_points) >= 3:
-            # 检查是否双击或点击第一个点来完成多边形
-            if len(self.polygon_points) > 3:
-                first_point = self.polygon_points[0]
-                if abs(x - first_point[0]) < 10 and abs(y - first_point[1]) < 10:
-                    # 完成多边形
-                    self.finish_polygon()
-                    return
-                    
-        # 绘制临时点
+        # 重新绘制，显示当前进度
         self.redraw()
-        if self.canvas:
+        
+        if self.canvas and len(self.polygon_points) > 0:
+            # 绘制所有已经确定的点
             for px, py in self.polygon_points:
                 self.canvas.create_oval(px-3, py-3, px+3, py+3, 
                                       fill="red", outline="red", tags="temp")
+            
+            # 绘制已经确定的连线（使用Bresenham算法）
+            if len(self.polygon_points) > 1:
+                for i in range(len(self.polygon_points) - 1):
+                    p1 = self.polygon_points[i]
+                    p2 = self.polygon_points[i + 1]
+                    self.draw_polygon_line_with_bresenham(
+                        p1[0], p1[1], p2[0], p2[1], 
+                        self.current_color, self.current_line_width
+                    )
+            
+            # 提示信息已移除
+
+    def draw_polygon_preview(self, mouse_x, mouse_y):
+        """绘制多边形实时预览 - 优化版，避免频繁重绘"""
+        if not self.canvas or len(self.polygon_points) == 0:
+            return
+            
+        # 节流：限制更新频率，避免过于频繁的绘制
+        import time
+        current_time = time.time() * 1000  # 转换为毫秒
+        if current_time - self.last_preview_time < self.preview_throttle_ms:
+            return
+        self.last_preview_time = current_time
+            
+        # 只清除临时元素，不重绘所有图形，避免卡顿
+        self.canvas.delete("temp")
+        
+        # 检查鼠标是否接近第一个点（用于高亮显示）
+        near_first_point = False
+        if len(self.polygon_points) >= 3:
+            first_point = self.polygon_points[0]
+            if abs(mouse_x - first_point[0]) < 15 and abs(mouse_y - first_point[1]) < 15:
+                near_first_point = True
+        
+        # 绘制所有已经确定的点
+        for i, (px, py) in enumerate(self.polygon_points):
+            if i == 0 and near_first_point:
+                # 起点高亮显示（鼠标接近时）
+                self.canvas.create_oval(px-6, py-6, px+6, py+6, 
+                                      fill="yellow", outline="orange", width=2, tags="temp")
+                self.canvas.create_oval(px-3, py-3, px+3, py+3, 
+                                      fill="red", outline="red", tags="temp")
+            else:
+                # 普通点显示
+                self.canvas.create_oval(px-3, py-3, px+3, py+3, 
+                                      fill="red", outline="red", tags="temp")
+        
+        # 绘制已经确定的连线（使用Bresenham算法）
+        if len(self.polygon_points) > 1:
+            for i in range(len(self.polygon_points) - 1):
+                p1 = self.polygon_points[i]
+                p2 = self.polygon_points[i + 1]
+                self.draw_polygon_line_with_bresenham(
+                    p1[0], p1[1], p2[0], p2[1], 
+                    self.current_color, self.current_line_width
+                )
+        
+        # 绘制预览线和鼠标位置
+        if len(self.polygon_points) > 0:
+            if near_first_point:
+                # 如果接近起点，显示闭合预览
+                first_point = self.polygon_points[0]
+                last_point = self.polygon_points[-1]
+                self.draw_polygon_line_with_bresenham(
+                    last_point[0], last_point[1], first_point[0], first_point[1],
+                    "green", 3  # 使用绿色粗线显示闭合预览
+                )
+            else:
+                # 否则显示到鼠标位置的预览线
+                last_point = self.polygon_points[-1]
+                self.draw_polygon_line_with_bresenham(
+                    last_point[0], last_point[1], mouse_x, mouse_y,
+                    "gray", 1  # 使用灰色细线显示预览
+                )
+                
+                # 绘制鼠标位置的临时点
+                self.canvas.create_oval(mouse_x-2, mouse_y-2, mouse_x+2, mouse_y+2,
+                                      fill="gray", outline="gray", tags="temp")
+        
+        # 提示信息已移除
                                       
     def finish_polygon(self):
         """完成多边形绘制"""
@@ -365,9 +533,16 @@ class DrawingManager:
                                   fill="red", font=("Arial", 10), tags="temp")
         
     def update_temp_shape(self, x, y):
-        """更新临时图形"""
+        """更新临时图形 - 带节流优化"""
         if not self.temp_shape:
             return
+        
+        # 节流：限制更新频率，避免过于频繁的重绘
+        import time
+        current_time = time.time() * 1000  # 转换为毫秒
+        if current_time - self.last_temp_update_time < self.temp_update_throttle_ms:
+            return
+        self.last_temp_update_time = current_time
             
         if isinstance(self.temp_shape, Line):
             self.temp_shape.x2 = x
@@ -396,7 +571,8 @@ class DrawingManager:
             # 设置主半径为较大值
             self.temp_shape.radius = max(self.temp_shape.radius_x, self.temp_shape.radius_y)
             
-        self.redraw_with_temp()
+        # 优化：只重绘临时图形，不重绘所有已存在的图形
+        self.redraw_temp_only()
         
     def finish_shape(self, x, y):
         """完成图形绘制"""
@@ -478,6 +654,7 @@ class DrawingManager:
         """添加图形"""
         self.shapes.append(shape)
         self.save_state()
+        self.shape_cache_valid = False  # 添加图形后缓存失效
         self.redraw()
         
     def find_shape_at_point(self, x, y) -> Optional[BaseShape]:
@@ -492,6 +669,7 @@ class DrawingManager:
         """选中图形"""
         shape.set_selected(True)
         self.selected_shapes.append(shape)
+        self.shape_cache_valid = False  # 选择状态变化，缓存失效
         self.redraw()
         
     def clear_selection(self):
@@ -499,6 +677,7 @@ class DrawingManager:
         for shape in self.selected_shapes:
             shape.set_selected(False)
         self.selected_shapes.clear()
+        self.shape_cache_valid = False  # 选择状态变化，缓存失效
         self.redraw()
         
     def select_all(self):
@@ -514,6 +693,7 @@ class DrawingManager:
                 self.shapes.remove(shape)
         self.selected_shapes.clear()
         self.save_state()
+        self.shape_cache_valid = False  # 删除图形后缓存失效
         self.redraw()
         
     def copy(self):
@@ -573,30 +753,73 @@ class DrawingManager:
         self.redraw()
         
     def redraw(self):
-        """重新绘制所有图形"""
+        """重新绘制所有图形 - 带智能缓存优化"""
         if not self.canvas:
             return
-            
-        # 清除所有图形和辅助元素
-        self.canvas.delete("shape")
-        self.canvas.delete("temp")
-        self.canvas.delete("resize_handle")
-        self.canvas.delete("brush_stroke")
-        self.canvas.delete("selection")  # 清除选择框和调整手柄
         
-        # 绘制所有图形
-        for shape in self.shapes:
-            shape.draw(self.canvas)
+        # 检查是否需要重绘所有图形
+        current_shape_count = len(self.shapes)
+        needs_full_redraw = (
+            not self.shape_cache_valid or 
+            current_shape_count != self.last_shape_count or
+            any(shape.selected for shape in self.shapes)  # 有选中的图形时需要重绘
+        )
+        
+        if needs_full_redraw:
+            # 清除所有图形和辅助元素
+            self.canvas.delete("shape")
+            self.canvas.delete("temp")
+            self.canvas.delete("resize_handle")
+            self.canvas.delete("brush_stroke")
+            self.canvas.delete("selection")  # 清除选择框和调整手柄
             
-        # 绘制当前正在绘制的笔刷轨迹
-        if self.current_brush_stroke and len(self.current_brush_stroke.points) > 1:
-            self.current_brush_stroke.draw(self.canvas)
+            # 绘制所有图形
+            for shape in self.shapes:
+                shape.draw(self.canvas)
+                
+            # 绘制当前正在绘制的笔刷轨迹
+            if self.current_brush_stroke and len(self.current_brush_stroke.points) > 1:
+                self.current_brush_stroke.draw(self.canvas)
             
+            # 更新缓存状态
+            self.shape_cache_valid = True
+            self.last_shape_count = current_shape_count
+        else:
+            # 只清除临时元素
+            self.canvas.delete("temp")
+            
+    def redraw_temp_only(self):
+        """只重绘临时图形，避免频繁重绘所有图形"""
+        if not self.canvas:
+            return
+        
+        # 只清除临时元素
+        self.canvas.delete("temp")
+        
+        # 绘制临时图形 - 只绘制轮廓，不填充
+        if self.temp_shape:
+            if hasattr(self.temp_shape, 'draw_outline_only'):
+                self.temp_shape.draw_outline_only(self.canvas, "gray")
+            else:
+                # 临时形状应该都有draw_outline_only方法，这个分支一般不会执行
+                pass
+
     def redraw_with_temp(self):
         """重新绘制包括临时图形"""
         self.redraw()
         if self.temp_shape and self.canvas:
-            self.temp_shape.draw(self.canvas)
+            # 临时图形只绘制边框，不填充，避免卡顿
+            if hasattr(self.temp_shape, 'draw_outline_only'):
+                self.temp_shape.draw_outline_only(self.canvas, "gray")  # 使用灰色显示临时图形
+            else:
+                # 如果没有outline_only方法，临时保存填充颜色并设为空
+                original_fill = getattr(self.temp_shape, 'fill_color', None)
+                if hasattr(self.temp_shape, 'fill_color'):
+                    self.temp_shape.fill_color = None
+                self.temp_shape.draw(self.canvas)
+                # 恢复原填充颜色
+                if hasattr(self.temp_shape, 'fill_color'):
+                    self.temp_shape.fill_color = original_fill
             
     def save_state(self):
         """保存当前状态到历史记录"""
@@ -634,7 +857,8 @@ class DrawingManager:
             shape = self.create_shape_from_dict(shape_data)
             if shape:
                 self.shapes.append(shape)
-                
+        
+        self.shape_cache_valid = False  # 恢复状态后缓存失效        
         self.redraw()
         
     def save_to_file(self, filename):

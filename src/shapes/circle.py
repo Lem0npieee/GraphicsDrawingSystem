@@ -16,25 +16,211 @@ class Circle(BaseShape):
         self.radius_x = max(radius, 1)  # 水平半径（半长轴）
         self.radius_y = max(radius, 1)  # 垂直半径（半短轴）
     
-    def draw(self, canvas):
-        """在画布上绘制圆形/椭圆"""
+    def midpoint_ellipse(self, cx: int, cy: int, rx: int, ry: int) -> List[Tuple[int, int]]:
+        """
+        中点椭圆算法
+        返回椭圆上所有像素点的坐标列表
+        cx, cy: 椭圆中心坐标
+        rx: 水平半径（半长轴）
+        ry: 垂直半径（半短轴）
+        """
+        points = []
+        
+        # 第一个区域 (|斜率| < 1)
+        x = 0
+        y = ry
+        rx2 = rx * rx
+        ry2 = ry * ry
+        tworx2 = 2 * rx2
+        twory2 = 2 * ry2
+        
+        # 初始决策参数 p1
+        p1 = ry2 - (rx2 * ry) + (0.25 * rx2)
+        dx = twory2 * x
+        dy = tworx2 * y
+        
+        # 第一个区域的点
+        while dx < dy:
+            # 添加当前点到四个象限
+            points.extend([
+                (cx + x, cy + y),  # 第一象限
+                (cx - x, cy + y),  # 第二象限
+                (cx + x, cy - y),  # 第四象限
+                (cx - x, cy - y)   # 第三象限
+            ])
+            
+            if p1 < 0:
+                # 选择东点 (x+1, y)
+                x += 1
+                dx += twory2
+                p1 += dx + ry2
+            else:
+                # 选择东南点 (x+1, y-1)
+                x += 1
+                y -= 1
+                dx += twory2
+                dy -= tworx2
+                p1 += dx - dy + ry2
+        
+        # 第二个区域 (|斜率| >= 1)
+        # 重新计算决策参数 p2
+        p2 = (ry2 * (x + 0.5) * (x + 0.5)) + (rx2 * (y - 1) * (y - 1)) - (rx2 * ry2)
+        
+        while y >= 0:
+            # 添加当前点到四个象限
+            points.extend([
+                (cx + x, cy + y),  # 第一象限
+                (cx - x, cy + y),  # 第二象限
+                (cx + x, cy - y),  # 第四象限
+                (cx - x, cy - y)   # 第三象限
+            ])
+            
+            if p2 > 0:
+                # 选择南点 (x, y-1)
+                y -= 1
+                dy -= tworx2
+                p2 += rx2 - dy
+            else:
+                # 选择东南点 (x+1, y-1)
+                y -= 1
+                x += 1
+                dx += twory2
+                dy -= tworx2
+                p2 += dx - dy + rx2
+        
+        return points
+    
+    def scanline_fill_ellipse(self, cx: int, cy: int, rx: int, ry: int) -> List[Tuple[int, int]]:
+        """
+        扫描线填充算法 - 椭圆
+        使用扫描线算法填充椭圆内部所有像素点
+        """
+        fill_points = []
+        
+        if rx <= 0 or ry <= 0:
+            return fill_points
+        
+        # 获取椭圆边界框
+        min_y = cy - ry
+        max_y = cy + ry
+        
+        # 对每条扫描线进行处理
+        for scan_y in range(min_y, max_y + 1):
+            # 计算椭圆在当前扫描线上的交点
+            intersections = []
+            
+            # 椭圆方程: (x-cx)²/rx² + (y-cy)²/ry² = 1
+            # 解出x: x = cx ± rx * sqrt(1 - (y-cy)²/ry²)
+            dy = scan_y - cy
+            if abs(dy) <= ry:
+                # 计算判别式
+                discriminant = 1 - (dy * dy) / (ry * ry)
+                if discriminant >= 0:
+                    x_offset = rx * math.sqrt(discriminant)
+                    
+                    # 两个交点
+                    x1 = cx - x_offset
+                    x2 = cx + x_offset
+                    
+                    intersections.extend([x1, x2])
+            
+            # 对交点进行排序
+            intersections.sort()
+            
+            # 填充交点对之间的像素
+            i = 0
+            while i < len(intersections) - 1:
+                x_start = int(math.ceil(intersections[i]))
+                x_end = int(math.floor(intersections[i + 1]))
+                
+                # 填充水平线段
+                for x in range(x_start, x_end + 1):
+                    fill_points.append((x, scan_y))
+                
+                i += 2  # 处理下一对交点
+        
+        return fill_points
+
+    def draw_outline_only(self, canvas, outline_color=None):
+        """只绘制椭圆边框，不填充 - 用于临时预览"""
         if not self.visible:
             return
             
-        # 使用椭圆半径绘制
-        x1 = self.x - self.radius_x
-        y1 = self.y - self.radius_y
-        x2 = self.x + self.radius_x
-        y2 = self.y + self.radius_y
+        if outline_color is None:
+            outline_color = "red" if self.selected else self.color
         
+        # 转换为整数坐标
+        cx, cy = int(round(self.x)), int(round(self.y))
+        rx, ry = int(round(self.radius_x)), int(round(self.radius_y))
+        
+        # 确保半径为正数
+        rx = max(1, rx)
+        ry = max(1, ry)
+        
+        # 只绘制椭圆边框
+        ellipse_points = self.midpoint_ellipse(cx, cy, rx, ry)
+        
+        # 根据线宽绘制边框
+        line_width = max(1, self.line_width)
+        half_width = line_width // 2
+        
+        for px, py in ellipse_points:
+            # 为了实现线宽效果，在每个点周围绘制小矩形
+            for dx in range(-half_width, half_width + 1):
+                for dy in range(-half_width, half_width + 1):
+                    canvas.create_rectangle(
+                        px + dx, py + dy, 
+                        px + dx + 1, py + dy + 1,
+                        fill=outline_color,
+                        outline=outline_color,
+                        tags="temp"  # 使用temp标签便于清除
+                    )
+
+    def draw(self, canvas):
+        """在画布上绘制圆形/椭圆 - 使用中点椭圆算法"""
+        if not self.visible:
+            return
+            
         outline_color = "red" if self.selected else self.color
         fill_color = self.fill_color
         
-        canvas.create_oval(x1, y1, x2, y2,
-                          outline=outline_color,
-                          fill=fill_color,
-                          width=self.line_width,
-                          tags="shape")
+        # 转换为整数坐标
+        cx, cy = int(round(self.x)), int(round(self.y))
+        rx, ry = int(round(self.radius_x)), int(round(self.radius_y))
+        
+        # 确保半径为正数
+        rx = max(1, rx)
+        ry = max(1, ry)
+        
+        # 如果需要填充，先绘制填充区域
+        if fill_color and fill_color.lower() != "white":
+            fill_points = self.scanline_fill_ellipse(cx, cy, rx, ry)
+            for px, py in fill_points:
+                canvas.create_rectangle(
+                    px, py, px + 1, py + 1,
+                    fill=fill_color,
+                    outline=fill_color,
+                    tags="shape"
+                )
+        
+        # 绘制椭圆边框
+        ellipse_points = self.midpoint_ellipse(cx, cy, rx, ry)
+        
+        # 根据线宽绘制边框
+        line_width = max(1, self.line_width)
+        half_width = line_width // 2
+        
+        for px, py in ellipse_points:
+            # 为了实现线宽效果，在每个点周围绘制小矩形
+            for dx in range(-half_width, half_width + 1):
+                for dy in range(-half_width, half_width + 1):
+                    canvas.create_rectangle(
+                        px + dx, py + dy, 
+                        px + dx + 1, py + dy + 1,
+                        fill=outline_color,
+                        outline=outline_color,
+                        tags="shape"
+                    )
         
         # 如果被选中，在圆心和边界上绘制标记点
         if self.selected:

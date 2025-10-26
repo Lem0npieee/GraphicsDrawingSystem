@@ -19,19 +19,164 @@ class Rectangle(BaseShape):
         self.width = self.x2 - self.x1
         self.height = self.y2 - self.y1
     
+    def bresenham_line(self, x0: int, y0: int, x1: int, y1: int) -> List[Tuple[int, int]]:
+        """
+        Bresenham直线算法
+        返回直线上所有像素点的坐标列表
+        """
+        points = []
+        
+        # 计算增量
+        dx = abs(x1 - x0)
+        dy = abs(y1 - y0)
+        
+        # 确定步进方向
+        sx = 1 if x0 < x1 else -1
+        sy = 1 if y0 < y1 else -1
+        
+        # 初始化误差项
+        err = dx - dy
+        
+        # 当前点
+        x, y = x0, y0
+        
+        while True:
+            # 添加当前点
+            points.append((x, y))
+            
+            # 检查是否到达终点
+            if x == x1 and y == y1:
+                break
+            
+            # 计算新的误差项
+            e2 = 2 * err
+            
+            # X方向步进判断
+            if e2 > -dy:
+                err -= dy
+                x += sx
+            
+            # Y方向步进判断  
+            if e2 < dx:
+                err += dx
+                y += sy
+        
+        return points
+    
+    def scanline_fill_rectangle(self) -> List[Tuple[int, int]]:
+        """
+        扫描线填充算法 - 矩形
+        使用扫描线算法填充矩形内部所有像素点
+        """
+        fill_points = []
+        
+        x1, y1 = int(round(self.x1)), int(round(self.y1))
+        x2, y2 = int(round(self.x2)), int(round(self.y2))
+        
+        # 确保坐标顺序正确
+        min_x, max_x = min(x1, x2), max(x1, x2)
+        min_y, max_y = min(y1, y2), max(y1, y2)
+        
+        # 对每条扫描线进行处理
+        for scan_y in range(min_y, max_y + 1):
+            # 矩形的交点很简单：左边界和右边界
+            intersections = [min_x, max_x]
+            
+            # 填充交点对之间的像素
+            x_start, x_end = intersections[0], intersections[1]
+            for x in range(x_start, x_end + 1):
+                fill_points.append((x, scan_y))
+        
+        return fill_points
+    
+    def draw_outline_only(self, canvas, outline_color=None):
+        """只绘制矩形边框，不填充 - 用于临时预览"""
+        if not self.visible:
+            return
+            
+        if outline_color is None:
+            outline_color = "red" if self.selected else self.color
+        
+        # 绘制矩形边框 - 使用Bresenham算法绘制四条边
+        x1, y1 = int(round(self.x1)), int(round(self.y1))
+        x2, y2 = int(round(self.x2)), int(round(self.y2))
+        
+        # 定义矩形的四条边
+        edges = [
+            (x1, y1, x2, y1),  # 上边
+            (x2, y1, x2, y2),  # 右边
+            (x2, y2, x1, y2),  # 下边
+            (x1, y2, x1, y1)   # 左边
+        ]
+        
+        line_width = max(1, self.line_width)
+        half_width = line_width // 2
+        
+        for edge_x1, edge_y1, edge_x2, edge_y2 in edges:
+            # 使用Bresenham算法计算这条边上的所有像素点
+            edge_points = self.bresenham_line(edge_x1, edge_y1, edge_x2, edge_y2)
+            
+            # 绘制像素点，考虑线宽
+            for px, py in edge_points:
+                for dx in range(-half_width, half_width + 1):
+                    for dy in range(-half_width, half_width + 1):
+                        canvas.create_rectangle(
+                            px + dx, py + dy,
+                            px + dx + 1, py + dy + 1,
+                            fill=outline_color,
+                            outline=outline_color,
+                            tags="temp"  # 使用temp标签便于清除
+                        )
+    
     def draw(self, canvas):
-        """在画布上绘制矩形"""
+        """在画布上绘制矩形 - 使用Bresenham直线算法"""
         if not self.visible:
             return
             
         outline_color = "red" if self.selected else self.color
         fill_color = self.fill_color
         
-        canvas.create_rectangle(self.x1, self.y1, self.x2, self.y2,
-                               outline=outline_color,
-                               fill=fill_color,
-                               width=self.line_width,
-                               tags="shape")
+        # 如果需要填充，先绘制填充区域
+        if fill_color and fill_color.lower() != "white":
+            fill_points = self.scanline_fill_rectangle()
+            for px, py in fill_points:
+                canvas.create_rectangle(
+                    px, py, px + 1, py + 1,
+                    fill=fill_color,
+                    outline=fill_color,
+                    tags="shape"
+                )
+        
+        # 绘制矩形边框 - 使用Bresenham算法绘制四条边
+        x1, y1 = int(round(self.x1)), int(round(self.y1))
+        x2, y2 = int(round(self.x2)), int(round(self.y2))
+        
+        # 定义矩形的四条边
+        edges = [
+            (x1, y1, x2, y1),  # 上边
+            (x2, y1, x2, y2),  # 右边
+            (x2, y2, x1, y2),  # 下边
+            (x1, y2, x1, y1)   # 左边
+        ]
+        
+        line_width = max(1, self.line_width)
+        half_width = line_width // 2
+        
+        for edge_x1, edge_y1, edge_x2, edge_y2 in edges:
+            # 使用Bresenham算法计算这条边上的所有像素点
+            edge_points = self.bresenham_line(edge_x1, edge_y1, edge_x2, edge_y2)
+            
+            # 绘制像素点，考虑线宽
+            for px, py in edge_points:
+                for dx in range(-half_width, half_width + 1):
+                    for dy in range(-half_width, half_width + 1):
+                        canvas.create_rectangle(
+                            px + dx, py + dy,
+                            px + dx + 1, py + dy + 1,
+                            fill=outline_color,
+                            outline=outline_color,
+                            tags="shape"
+                        )
         
         # 如果被选中，在四个角绘制小方块
         if self.selected:

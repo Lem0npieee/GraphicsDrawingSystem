@@ -16,17 +16,104 @@ class Line(BaseShape):
         self.x2 = x2
         self.y2 = y2
     
+    def bresenham_line(self, x0: int, y0: int, x1: int, y1: int) -> List[Tuple[int, int]]:
+        """
+        Bresenham直线算法
+        返回直线上所有像素点的坐标列表
+        """
+        points = []
+        
+        # 计算增量
+        dx = abs(x1 - x0)
+        dy = abs(y1 - y0)
+        
+        # 确定步进方向
+        sx = 1 if x0 < x1 else -1
+        sy = 1 if y0 < y1 else -1
+        
+        # 初始化误差项
+        err = dx - dy
+        
+        # 当前点
+        x, y = x0, y0
+        
+        while True:
+            # 添加当前点
+            points.append((x, y))
+            
+            # 检查是否到达终点
+            if x == x1 and y == y1:
+                break
+            
+            # 计算新的误差项
+            e2 = 2 * err
+            
+            # X方向步进判断
+            if e2 > -dy:
+                err -= dy
+                x += sx
+            
+            # Y方向步进判断  
+            if e2 < dx:
+                err += dx
+                y += sy
+        
+        return points
+    
+    def draw_outline_only(self, canvas, outline_color=None):
+        """只绘制直线，不填充 - 用于临时预览"""
+        if not self.visible:
+            return
+            
+        if outline_color is None:
+            outline_color = "red" if self.selected else self.color
+        
+        # 使用Bresenham算法计算直线上的所有像素点
+        x0, y0 = int(round(self.x1)), int(round(self.y1))
+        x1, y1 = int(round(self.x2)), int(round(self.y2))
+        
+        line_points = self.bresenham_line(x0, y0, x1, y1)
+        
+        # 根据线宽绘制像素点
+        pixel_size = max(1, self.line_width)
+        half_size = pixel_size // 2
+        
+        for px, py in line_points:
+            # 绘制正方形像素点来模拟像素
+            canvas.create_rectangle(
+                px - half_size, py - half_size,
+                px + half_size, py + half_size,
+                fill=outline_color,
+                outline=outline_color,
+                tags="temp"  # 使用temp标签便于清除
+            )
+    
     def draw(self, canvas):
-        """在画布上绘制直线"""
+        """在画布上绘制直线 - 使用Bresenham算法"""
         if not self.visible:
             return
             
         outline_color = "red" if self.selected else self.color
         
-        canvas.create_line(self.x1, self.y1, self.x2, self.y2,
-                          fill=outline_color,
-                          width=self.line_width,
-                          tags="shape")
+        # 使用Bresenham算法计算直线上的所有像素点
+        x0, y0 = int(round(self.x1)), int(round(self.y1))
+        x1, y1 = int(round(self.x2)), int(round(self.y2))
+        
+        line_points = self.bresenham_line(x0, y0, x1, y1)
+        
+        # 根据线宽绘制像素点
+        pixel_size = max(1, self.line_width)
+        half_size = pixel_size // 2
+        
+        for px, py in line_points:
+            # 绘制正方形像素点来模拟像素
+            canvas.create_rectangle(
+                px - half_size, py - half_size,
+                px + half_size, py + half_size,
+                fill=outline_color,
+                outline=outline_color,
+                tags="shape"
+            )
         
         # 如果被选中，在端点绘制小圆点
         if self.selected:

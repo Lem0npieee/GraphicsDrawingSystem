@@ -1,6 +1,7 @@
 """
 多边形图形类
 """
+import math
 from typing import List, Tuple, Dict, Any
 from .base_shape import BaseShape
 
@@ -19,24 +20,213 @@ class Polygon(BaseShape):
         center_y = sum(p[1] for p in points) / len(points)
         super().__init__(center_x, center_y)
     
-    def draw(self, canvas):
-        """在画布上绘制多边形"""
+    def bresenham_line(self, x0: int, y0: int, x1: int, y1: int) -> List[Tuple[int, int]]:
+        """
+        Bresenham直线算法
+        返回直线上所有像素点的坐标列表
+        """
+        points = []
+        
+        # 计算增量
+        dx = abs(x1 - x0)
+        dy = abs(y1 - y0)
+        
+        # 确定步进方向
+        sx = 1 if x0 < x1 else -1
+        sy = 1 if y0 < y1 else -1
+        
+        # 初始化误差项
+        err = dx - dy
+        
+        # 当前点
+        x, y = x0, y0
+        
+        while True:
+            # 添加当前点
+            points.append((x, y))
+            
+            # 检查是否到达终点
+            if x == x1 and y == y1:
+                break
+            
+            # 计算新的误差项
+            e2 = 2 * err
+            
+            # X方向步进判断
+            if e2 > -dy:
+                err -= dy
+                x += sx
+            
+            # Y方向步进判断  
+            if e2 < dx:
+                err += dx
+                y += sy
+        
+        return points
+    
+    def scanline_fill_polygon(self) -> List[Tuple[int, int]]:
+        """
+        扫描线填充算法 - 多边形
+        改进的扫描线算法，正确处理顶点和水平边
+        """
+        if len(self.points) < 3:
+            return []
+        
+        # 获取边界框
+        min_x, min_y, max_x, max_y = self.get_bounds()
+        min_y, max_y = int(math.floor(min_y)), int(math.ceil(max_y))
+        
+        fill_points = []
+        
+        # 预处理：构建边表（去除水平边，处理顶点）
+        edges = []
+        n = len(self.points)
+        
+        for i in range(n):
+            p1 = self.points[i]
+            p2 = self.points[(i + 1) % n]
+            
+            x1, y1 = p1[0], p1[1]
+            x2, y2 = p2[0], p2[1]
+            
+            # 跳过水平边
+            if y1 == y2:
+                continue
+            
+            # 确保y1 < y2
+            if y1 > y2:
+                x1, y1, x2, y2 = x2, y2, x1, y1
+            
+            # 计算边的斜率和起始x值
+            dx_dy = (x2 - x1) / (y2 - y1)
+            
+            # 边的信息：(y_min, y_max, x_at_y_min, dx_dy)
+            edges.append((int(math.ceil(y1)), int(y2), x1 + dx_dy * (math.ceil(y1) - y1), dx_dy))
+        
+        # 对每条扫描线进行处理
+        for scan_y in range(min_y, max_y + 1):
+            intersections = []
+            
+            # 找到与当前扫描线相交的边
+            for y_min, y_max, x_start, dx_dy in edges:
+                if y_min <= scan_y < y_max:  # 注意：不包括上端点以避免重复计算
+                    x_intersect = x_start + dx_dy * (scan_y - y_min)
+                    intersections.append(x_intersect)
+            
+            # 处理顶点情况：检查扫描线是否恰好经过顶点
+            for px, py in self.points:
+                if abs(py - scan_y) < 0.0001:  # 扫描线经过顶点
+                    # 查找相邻的两条边
+                    vertex_index = self.points.index((px, py))
+                    prev_point = self.points[(vertex_index - 1) % n]
+                    next_point = self.points[(vertex_index + 1) % n]
+                    
+                    # 检查相邻两点是否在扫描线的同一侧
+                    prev_y = prev_point[1]
+                    next_y = next_point[1]
+                    
+                    if (prev_y > scan_y) == (next_y > scan_y):
+                        # 局部极值点，需要添加交点
+                        intersections.append(px)
+            
+            # 对交点进行排序并去重
+            intersections = sorted(set(intersections))
+            
+            # 填充交点对之间的像素（奇偶规则）
+            for i in range(0, len(intersections) - 1, 2):
+                if i + 1 < len(intersections):
+                    x_start = int(math.ceil(intersections[i]))
+                    x_end = int(math.floor(intersections[i + 1]))
+                    
+                    for x in range(x_start, x_end + 1):
+                        fill_points.append((x, scan_y))
+        
+        return fill_points
+    
+    def draw_outline_only(self, canvas, outline_color=None):
+        """只绘制多边形边框，不填充 - 用于临时预览"""
         if not self.visible:
             return
+        
+        if outline_color is None:
+            outline_color = "red" if self.selected else self.color
+        
+        # 绘制多边形边框 - 使用Bresenham算法绘制每条边
+        n = len(self.points)
+        line_width = max(1, self.line_width)
+        half_width = line_width // 2
+        
+        for i in range(n):
+            # 当前边的起点和终点
+            p1 = self.points[i]
+            p2 = self.points[(i + 1) % n]  # 最后一个点连接到第一个点
             
-        # 将点列表转换为平坦列表
-        flat_points = []
-        for x, y in self.points:
-            flat_points.extend([x, y])
+            # 转换为整数坐标
+            x0, y0 = int(round(p1[0])), int(round(p1[1]))
+            x1, y1 = int(round(p2[0])), int(round(p2[1]))
+            
+            # 使用Bresenham算法计算这条边上的所有像素点
+            edge_points = self.bresenham_line(x0, y0, x1, y1)
+            
+            # 绘制像素点，考虑线宽
+            for px, py in edge_points:
+                for dx in range(-half_width, half_width + 1):
+                    for dy in range(-half_width, half_width + 1):
+                        canvas.create_rectangle(
+                            px + dx, py + dy,
+                            px + dx + 1, py + dy + 1,
+                            fill=outline_color,
+                            outline=outline_color,
+                            tags="temp"  # 使用temp标签便于清除
+                        )
+    
+    def draw(self, canvas):
+        """在画布上绘制多边形 - 使用Bresenham直线算法"""
+        if not self.visible:
+            return
         
         outline_color = "red" if self.selected else self.color
         fill_color = self.fill_color
         
-        canvas.create_polygon(flat_points,
-                             outline=outline_color,
-                             fill=fill_color,
-                             width=self.line_width,
-                             tags="shape")
+        # 如果需要填充，先绘制填充区域
+        if fill_color and fill_color.lower() != "white":
+            fill_points = self.scanline_fill_polygon()
+            for px, py in fill_points:
+                canvas.create_rectangle(
+                    px, py, px + 1, py + 1,
+                    fill=fill_color,
+                    outline=fill_color,
+                    tags="shape"
+                )
+        
+        # 绘制多边形边框 - 使用Bresenham算法绘制每条边
+        n = len(self.points)
+        line_width = max(1, self.line_width)
+        half_width = line_width // 2
+        
+        for i in range(n):
+            # 当前边的起点和终点
+            p1 = self.points[i]
+            p2 = self.points[(i + 1) % n]  # 最后一个点连接到第一个点
+            
+            # 转换为整数坐标
+            x0, y0 = int(round(p1[0])), int(round(p1[1]))
+            x1, y1 = int(round(p2[0])), int(round(p2[1]))
+            
+            # 使用Bresenham算法计算这条边上的所有像素点
+            edge_points = self.bresenham_line(x0, y0, x1, y1)
+            
+            # 绘制像素点，考虑线宽
+            for px, py in edge_points:
+                for dx in range(-half_width, half_width + 1):
+                    for dy in range(-half_width, half_width + 1):
+                        canvas.create_rectangle(
+                            px + dx, py + dy,
+                            px + dx + 1, py + dy + 1,
+                            fill=outline_color,
+                            outline=outline_color,
+                            tags="shape"
+                        )
         
         # 如果被选中，在每个顶点绘制小圆点
         if self.selected:
