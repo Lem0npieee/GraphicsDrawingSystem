@@ -64,55 +64,55 @@ class Polygon(BaseShape):
         
         return points
     
-    def scanline_fill_polygon(self) -> List[Tuple[int, int]]:
+    def scanline_fill_polygon(self) -> List[Tuple[int, int, int]]:
         """
-        扫描线填充算法 - 多边形
-        改进的扫描线算法，正确处理顶点和水平边
+        扫描线填充算法 - 多边形（返回水平线段以减少canvas调用）
+        返回值为列表 of (x_start, x_end, y)
         """
         if len(self.points) < 3:
             return []
-        
+
         # 获取边界框
         min_x, min_y, max_x, max_y = self.get_bounds()
         min_y, max_y = int(math.floor(min_y)), int(math.ceil(max_y))
-        
-        fill_points = []
-        
+
+        spans = []
+
         # 预处理：构建边表（去除水平边，处理顶点）
         edges = []
         n = len(self.points)
-        
+
         for i in range(n):
             p1 = self.points[i]
             p2 = self.points[(i + 1) % n]
-            
+
             x1, y1 = p1[0], p1[1]
             x2, y2 = p2[0], p2[1]
-            
+
             # 跳过水平边
             if y1 == y2:
                 continue
-            
+
             # 确保y1 < y2
             if y1 > y2:
                 x1, y1, x2, y2 = x2, y2, x1, y1
-            
+
             # 计算边的斜率和起始x值
             dx_dy = (x2 - x1) / (y2 - y1)
-            
+
             # 边的信息：(y_min, y_max, x_at_y_min, dx_dy)
             edges.append((int(math.ceil(y1)), int(y2), x1 + dx_dy * (math.ceil(y1) - y1), dx_dy))
-        
+
         # 对每条扫描线进行处理
         for scan_y in range(min_y, max_y + 1):
             intersections = []
-            
+
             # 找到与当前扫描线相交的边
             for y_min, y_max, x_start, dx_dy in edges:
                 if y_min <= scan_y < y_max:  # 注意：不包括上端点以避免重复计算
                     x_intersect = x_start + dx_dy * (scan_y - y_min)
                     intersections.append(x_intersect)
-            
+
             # 处理顶点情况：检查扫描线是否恰好经过顶点
             for px, py in self.points:
                 if abs(py - scan_y) < 0.0001:  # 扫描线经过顶点
@@ -120,28 +120,27 @@ class Polygon(BaseShape):
                     vertex_index = self.points.index((px, py))
                     prev_point = self.points[(vertex_index - 1) % n]
                     next_point = self.points[(vertex_index + 1) % n]
-                    
+
                     # 检查相邻两点是否在扫描线的同一侧
                     prev_y = prev_point[1]
                     next_y = next_point[1]
-                    
+
                     if (prev_y > scan_y) == (next_y > scan_y):
                         # 局部极值点，需要添加交点
                         intersections.append(px)
-            
+
             # 对交点进行排序并去重
             intersections = sorted(set(intersections))
-            
-            # 填充交点对之间的像素（奇偶规则）
+
+            # 填充交点对之间的像素（奇偶规则），以水平线段形式返回
             for i in range(0, len(intersections) - 1, 2):
                 if i + 1 < len(intersections):
                     x_start = int(math.ceil(intersections[i]))
                     x_end = int(math.floor(intersections[i + 1]))
-                    
-                    for x in range(x_start, x_end + 1):
-                        fill_points.append((x, scan_y))
-        
-        return fill_points
+                    if x_start <= x_end:
+                        spans.append((x_start, x_end, scan_y))
+
+        return spans
     
     def draw_outline_only(self, canvas, outline_color=None):
         """只绘制多边形边框，不填充 - 用于临时预览"""
@@ -188,16 +187,12 @@ class Polygon(BaseShape):
         outline_color = "red" if self.selected else self.color
         fill_color = self.fill_color
         
-        # 如果需要填充，先绘制填充区域
+        # 如果需要填充，先绘制填充区域（以水平线段绘制以减少大量像素调用）
         if fill_color and fill_color.lower() != "white":
-            fill_points = self.scanline_fill_polygon()
-            for px, py in fill_points:
-                canvas.create_rectangle(
-                    px, py, px + 1, py + 1,
-                    fill=fill_color,
-                    outline=fill_color,
-                    tags="shape"
-                )
+            spans = self.scanline_fill_polygon()
+            for x_start, x_end, sy in spans:
+                # 使用单条水平线表示连续像素段，减少canvas调用次数
+                canvas.create_line(x_start, sy, x_end + 1, sy, fill=fill_color, width=1, tags="shape")
         
         # 绘制多边形边框 - 使用Bresenham算法绘制每条边
         n = len(self.points)

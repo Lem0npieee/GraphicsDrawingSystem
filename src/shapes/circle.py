@@ -90,25 +90,25 @@ class Circle(BaseShape):
         
         return points
     
-    def scanline_fill_ellipse(self, cx: int, cy: int, rx: int, ry: int) -> List[Tuple[int, int]]:
+    def scanline_fill_ellipse(self, cx: int, cy: int, rx: int, ry: int) -> List[Tuple[int, int, int]]:
         """
-        扫描线填充算法 - 椭圆
-        使用扫描线算法填充椭圆内部所有像素点
+        扫描线填充算法 - 椭圆（返回水平线段以减少canvas调用）
+        返回值为列表 of (x_start, x_end, y)
         """
-        fill_points = []
-        
+        spans: List[Tuple[int, int, int]] = []
+
         if rx <= 0 or ry <= 0:
-            return fill_points
-        
+            return spans
+
         # 获取椭圆边界框
         min_y = cy - ry
         max_y = cy + ry
-        
+
         # 对每条扫描线进行处理
         for scan_y in range(min_y, max_y + 1):
             # 计算椭圆在当前扫描线上的交点
             intersections = []
-            
+
             # 椭圆方程: (x-cx)²/rx² + (y-cy)²/ry² = 1
             # 解出x: x = cx ± rx * sqrt(1 - (y-cy)²/ry²)
             dy = scan_y - cy
@@ -117,29 +117,26 @@ class Circle(BaseShape):
                 discriminant = 1 - (dy * dy) / (ry * ry)
                 if discriminant >= 0:
                     x_offset = rx * math.sqrt(discriminant)
-                    
+
                     # 两个交点
                     x1 = cx - x_offset
                     x2 = cx + x_offset
-                    
+
                     intersections.extend([x1, x2])
-            
+
             # 对交点进行排序
             intersections.sort()
-            
-            # 填充交点对之间的像素
+
+            # 填充交点对之间的像素，以水平线段形式返回
             i = 0
             while i < len(intersections) - 1:
                 x_start = int(math.ceil(intersections[i]))
                 x_end = int(math.floor(intersections[i + 1]))
-                
-                # 填充水平线段
-                for x in range(x_start, x_end + 1):
-                    fill_points.append((x, scan_y))
-                
+                if x_start <= x_end:
+                    spans.append((x_start, x_end, scan_y))
                 i += 2  # 处理下一对交点
-        
-        return fill_points
+
+        return spans
 
     def draw_outline_only(self, canvas, outline_color=None):
         """只绘制椭圆边框，不填充 - 用于临时预览"""
@@ -192,16 +189,11 @@ class Circle(BaseShape):
         rx = max(1, rx)
         ry = max(1, ry)
         
-        # 如果需要填充，先绘制填充区域
+        # 如果需要填充，先绘制填充区域（以水平线段绘制以减少大量像素调用）
         if fill_color and fill_color.lower() != "white":
-            fill_points = self.scanline_fill_ellipse(cx, cy, rx, ry)
-            for px, py in fill_points:
-                canvas.create_rectangle(
-                    px, py, px + 1, py + 1,
-                    fill=fill_color,
-                    outline=fill_color,
-                    tags="shape"
-                )
+            spans = self.scanline_fill_ellipse(cx, cy, rx, ry)
+            for x_start, x_end, sy in spans:
+                canvas.create_line(x_start, sy, x_end + 1, sy, fill=fill_color, width=1, tags="shape")
         
         # 绘制椭圆边框
         ellipse_points = self.midpoint_ellipse(cx, cy, rx, ry)

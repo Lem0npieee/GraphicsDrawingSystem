@@ -136,20 +136,20 @@ class Rectangle(BaseShape):
         outline_color = "red" if self.selected else self.color
         fill_color = self.fill_color
         
-        # 如果需要填充，先绘制填充区域
-        if fill_color and fill_color.lower() != "white":
-            fill_points = self.scanline_fill_rectangle()
-            for px, py in fill_points:
-                canvas.create_rectangle(
-                    px, py, px + 1, py + 1,
-                    fill=fill_color,
-                    outline=fill_color,
-                    tags="shape"
-                )
-        
-        # 绘制矩形边框 - 使用Bresenham算法绘制四条边
+        # 转换为整数坐标
         x1, y1 = int(round(self.x1)), int(round(self.y1))
         x2, y2 = int(round(self.x2)), int(round(self.y2))
+        
+        # 如果需要填充，直接绘制一个填充矩形（比逐像素更快）
+        if fill_color and fill_color.lower() != "white":
+            canvas.create_rectangle(
+                x1, y1, x2, y2,
+                fill=fill_color,
+                outline=fill_color,
+                tags="shape"
+            )
+        
+        # 绘制矩形边框 - 使用Bresenham算法绘制四条边
         
         # 定义矩形的四条边
         edges = [
