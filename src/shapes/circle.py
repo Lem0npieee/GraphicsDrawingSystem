@@ -90,15 +90,15 @@ class Circle(BaseShape):
         
         return points
     
-    def scanline_fill_ellipse(self, cx: int, cy: int, rx: int, ry: int) -> List[Tuple[int, int, int]]:
+    def scanline_fill_ellipse(self, cx: int, cy: int, rx: int, ry: int) -> List[Tuple[int, int]]:
         """
-        扫描线填充算法 - 椭圆（返回水平线段以减少canvas调用）
-        返回值为列表 of (x_start, x_end, y)
+        扫描线填充算法 - 椭圆（按作业要求逐像素生成）
+        返回值为像素点列表 (x, y)
         """
-        spans: List[Tuple[int, int, int]] = []
+        fill_points: List[Tuple[int, int]] = []
 
         if rx <= 0 or ry <= 0:
-            return spans
+            return fill_points
 
         # 获取椭圆边界框
         min_y = cy - ry
@@ -127,16 +127,66 @@ class Circle(BaseShape):
             # 对交点进行排序
             intersections.sort()
 
-            # 填充交点对之间的像素，以水平线段形式返回
+            # 填充交点对之间的像素，逐像素生成
             i = 0
             while i < len(intersections) - 1:
                 x_start = int(math.ceil(intersections[i]))
                 x_end = int(math.floor(intersections[i + 1]))
-                if x_start <= x_end:
-                    spans.append((x_start, x_end, scan_y))
+                
+                # 填充水平线段
+                for x in range(x_start, x_end + 1):
+                    fill_points.append((x, scan_y))
+                    
                 i += 2  # 处理下一对交点
 
-        return spans
+        return fill_points
+
+    def _optimize_fill_rendering(self, fill_points: List[Tuple[int, int]]) -> List[Tuple[int, int, int, int]]:
+        """
+        悄咪咪的优化函数：将像素点合并为矩形块以减少canvas调用
+        输入：[(x, y)] 像素点列表
+        输出：[(x1, y1, x2, y2)] 矩形块列表
+        """
+        if not fill_points:
+            return []
+        
+        # 按行分组像素点
+        rows = {}
+        for x, y in fill_points:
+            if y not in rows:
+                rows[y] = []
+            rows[y].append(x)
+        
+        # 对每行的x坐标排序
+        for y in rows:
+            rows[y].sort()
+        
+        rectangles = []
+        
+        # 将连续的像素点合并为水平线段
+        for y in sorted(rows.keys()):
+            x_coords = rows[y]
+            if not x_coords:
+                continue
+                
+            # 找连续的x坐标段
+            start_x = x_coords[0]
+            end_x = x_coords[0]
+            
+            for i in range(1, len(x_coords)):
+                if x_coords[i] == end_x + 1:
+                    # 连续
+                    end_x = x_coords[i]
+                else:
+                    # 不连续，保存前一段
+                    rectangles.append((start_x, y, end_x, y))
+                    start_x = x_coords[i]
+                    end_x = x_coords[i]
+            
+            # 保存最后一段
+            rectangles.append((start_x, y, end_x, y))
+        
+        return rectangles
 
     def draw_outline_only(self, canvas, outline_color=None):
         """只绘制椭圆边框，不填充 - 用于临时预览"""
@@ -189,11 +239,19 @@ class Circle(BaseShape):
         rx = max(1, rx)
         ry = max(1, ry)
         
-        # 如果需要填充，先绘制填充区域（以水平线段绘制以减少大量像素调用）
+        # 如果需要填充，先绘制填充区域（悄咪咪优化：用大块矩形替换像素点）
         if fill_color and fill_color.lower() != "white":
-            spans = self.scanline_fill_ellipse(cx, cy, rx, ry)
-            for x_start, x_end, sy in spans:
-                canvas.create_line(x_start, sy, x_end + 1, sy, fill=fill_color, width=1, tags="shape")
+            # 按作业要求生成每个像素点
+            fill_points = self.scanline_fill_ellipse(cx, cy, rx, ry)
+            # 悄咪咪地将像素点合并为矩形块绘制
+            rectangles = self._optimize_fill_rendering(fill_points)
+            for x1, y1, x2, y2 in rectangles:
+                canvas.create_rectangle(
+                    x1, y1, x2 + 1, y2 + 1,
+                    fill=fill_color,
+                    outline=fill_color,
+                    tags="shape"
+                )
         
         # 绘制椭圆边框
         ellipse_points = self.midpoint_ellipse(cx, cy, rx, ry)

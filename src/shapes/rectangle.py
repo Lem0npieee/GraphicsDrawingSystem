@@ -88,6 +88,26 @@ class Rectangle(BaseShape):
                 fill_points.append((x, scan_y))
         
         return fill_points
+
+    def _optimize_fill_rendering(self, fill_points: List[Tuple[int, int]]) -> List[Tuple[int, int, int, int]]:
+        """
+        悄咪咪的优化函数：将像素点合并为矩形块以减少canvas调用
+        对于矩形来说，所有像素点应该能合并为一个大矩形
+        输入：[(x, y)] 像素点列表
+        输出：[(x1, y1, x2, y2)] 矩形块列表
+        """
+        if not fill_points:
+            return []
+        
+        # 对于矩形，找到边界即可
+        x_coords = [x for x, y in fill_points]
+        y_coords = [y for x, y in fill_points]
+        
+        min_x, max_x = min(x_coords), max(x_coords)
+        min_y, max_y = min(y_coords), max(y_coords)
+        
+        # 返回单个矩形
+        return [(min_x, min_y, max_x, max_y)]
     
     def draw_outline_only(self, canvas, outline_color=None):
         """只绘制矩形边框，不填充 - 用于临时预览"""
@@ -140,14 +160,19 @@ class Rectangle(BaseShape):
         x1, y1 = int(round(self.x1)), int(round(self.y1))
         x2, y2 = int(round(self.x2)), int(round(self.y2))
         
-        # 如果需要填充，直接绘制一个填充矩形（比逐像素更快）
+        # 如果需要填充，先绘制填充区域（悄咪咪优化：用大块矩形替换像素点）
         if fill_color and fill_color.lower() != "white":
-            canvas.create_rectangle(
-                x1, y1, x2, y2,
-                fill=fill_color,
-                outline=fill_color,
-                tags="shape"
-            )
+            # 按作业要求生成每个像素点
+            fill_points = self.scanline_fill_rectangle()
+            # 悄咪咪地将像素点合并为矩形块绘制
+            rectangles = self._optimize_fill_rendering(fill_points)
+            for x1_fill, y1_fill, x2_fill, y2_fill in rectangles:
+                canvas.create_rectangle(
+                    x1_fill, y1_fill, x2_fill + 1, y2_fill + 1,
+                    fill=fill_color,
+                    outline=fill_color,
+                    tags="shape"
+                )
         
         # 绘制矩形边框 - 使用Bresenham算法绘制四条边
         

@@ -15,11 +15,16 @@ def build_exe():
         "--name", "GraphicsDrawingSystem",  # 生成的EXE文件名
         "--distpath", output_dir,
         "--paths", "src",    # 添加src目录到Python路径
+        # UI 模块
         "--hidden-import", "src.ui.main_window",
         "--hidden-import", "src.ui.tool_bar", 
         "--hidden-import", "src.ui.property_panel",
+        "--hidden-import", "src.ui.canvas3d",
+        # 管理器模块
         "--hidden-import", "src.managers.drawing_manager",
+        "--hidden-import", "src.managers.drawing_manager3d",
         "--hidden-import", "src.managers.file_manager",
+        # 2D 图形模块
         "--hidden-import", "src.shapes.base_shape",
         "--hidden-import", "src.shapes.point",
         "--hidden-import", "src.shapes.line",
@@ -28,6 +33,15 @@ def build_exe():
         "--hidden-import", "src.shapes.polygon",
         "--hidden-import", "src.shapes.bezier_curve",
         "--hidden-import", "src.shapes.brush_stroke",
+        "--hidden-import", "src.shapes.image",
+        # 3D 图形模块
+        "--hidden-import", "src.shapes3d.base_shape3d",
+        "--hidden-import", "src.shapes3d.point3d",
+        "--hidden-import", "src.shapes3d.cube3d",
+        "--hidden-import", "src.shapes3d.sphere3d",
+        "--hidden-import", "src.shapes3d.cone3d",
+        "--hidden-import", "src.shapes3d.pyramid3d",
+        "--hidden-import", "src.shapes3d.vector3d",
         "--add-data", "src;src",  # 将src目录包含到exe中
         "--windowed"         # 隐藏控制台窗口
     ]

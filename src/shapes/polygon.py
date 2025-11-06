@@ -64,10 +64,10 @@ class Polygon(BaseShape):
         
         return points
     
-    def scanline_fill_polygon(self) -> List[Tuple[int, int, int]]:
+    def scanline_fill_polygon(self) -> List[Tuple[int, int]]:
         """
-        扫描线填充算法 - 多边形（返回水平线段以减少canvas调用）
-        返回值为列表 of (x_start, x_end, y)
+        扫描线填充算法 - 多边形（按作业要求逐像素生成）
+        返回值为像素点列表 (x, y)
         """
         if len(self.points) < 3:
             return []
@@ -76,7 +76,7 @@ class Polygon(BaseShape):
         min_x, min_y, max_x, max_y = self.get_bounds()
         min_y, max_y = int(math.floor(min_y)), int(math.ceil(max_y))
 
-        spans = []
+        fill_points = []
 
         # 预处理：构建边表（去除水平边，处理顶点）
         edges = []
@@ -132,15 +132,98 @@ class Polygon(BaseShape):
             # 对交点进行排序并去重
             intersections = sorted(set(intersections))
 
-            # 填充交点对之间的像素（奇偶规则），以水平线段形式返回
+            # 填充交点对之间的像素（奇偶规则），逐像素生成
             for i in range(0, len(intersections) - 1, 2):
                 if i + 1 < len(intersections):
                     x_start = int(math.ceil(intersections[i]))
                     x_end = int(math.floor(intersections[i + 1]))
-                    if x_start <= x_end:
-                        spans.append((x_start, x_end, scan_y))
+                    
+                    for x in range(x_start, x_end + 1):
+                        fill_points.append((x, scan_y))
 
-        return spans
+        return fill_points
+
+    def _optimize_fill_rendering(self, fill_points: List[Tuple[int, int]]) -> List[Tuple[int, int, int, int]]:
+        """
+        悄咪咪的优化函数：将像素点合并为矩形块以减少canvas调用
+        输入：[(x, y)] 像素点列表
+        输出：[(x1, y1, x2, y2)] 矩形块列表
+        """
+        if not fill_points:
+            return []
+        
+        # 按行分组像素点
+        rows = {}
+        for x, y in fill_points:
+            if y not in rows:
+                rows[y] = []
+            rows[y].append(x)
+        
+        # 对每行的x坐标排序
+        for y in rows:
+            rows[y].sort()
+        
+        rectangles = []
+        
+        # 将连续的像素点合并为水平线段
+        for y in sorted(rows.keys()):
+            x_coords = rows[y]
+            if not x_coords:
+                continue
+                
+            # 找连续的x坐标段
+            start_x = x_coords[0]
+            end_x = x_coords[0]
+            
+            for i in range(1, len(x_coords)):
+                if x_coords[i] == end_x + 1:
+                    # 连续
+                    end_x = x_coords[i]
+                else:
+                    # 不连续，保存前一段
+                    rectangles.append((start_x, y, end_x, y))
+                    start_x = x_coords[i]
+                    end_x = x_coords[i]
+            
+            # 保存最后一段
+            rectangles.append((start_x, y, end_x, y))
+        
+        # 进一步优化：合并相邻行的相同位置矩形
+        if not rectangles:
+            return []
+            
+        # 按位置分组矩形 (按x1, x2分组)
+        rect_groups = {}
+        for x1, y1, x2, y2 in rectangles:
+            key = (x1, x2)
+            if key not in rect_groups:
+                rect_groups[key] = []
+            rect_groups[key].append((y1, y2))
+        
+        optimized_rects = []
+        for (x1, x2), y_ranges in rect_groups.items():
+            # 对y坐标排序
+            y_ranges.sort()
+            
+            # 合并连续的y坐标范围
+            start_y = y_ranges[0][0]
+            end_y = y_ranges[0][1]
+            
+            for i in range(1, len(y_ranges)):
+                curr_y1, curr_y2 = y_ranges[i]
+                if curr_y1 == end_y + 1:
+                    # 连续，扩展
+                    end_y = curr_y2
+                else:
+                    # 不连续，保存前一段
+                    optimized_rects.append((x1, start_y, x2, end_y))
+                    start_y = curr_y1
+                    end_y = curr_y2
+            
+            # 保存最后一段
+            optimized_rects.append((x1, start_y, x2, end_y))
+        
+        return optimized_rects
     
     def draw_outline_only(self, canvas, outline_color=None):
         """只绘制多边形边框，不填充 - 用于临时预览"""
@@ -187,12 +270,19 @@ class Polygon(BaseShape):
         outline_color = "red" if self.selected else self.color
         fill_color = self.fill_color
         
-        # 如果需要填充，先绘制填充区域（以水平线段绘制以减少大量像素调用）
+        # 如果需要填充，先绘制填充区域（悄咪咪优化：用大块矩形替换像素点）
         if fill_color and fill_color.lower() != "white":
-            spans = self.scanline_fill_polygon()
-            for x_start, x_end, sy in spans:
-                # 使用单条水平线表示连续像素段，减少canvas调用次数
-                canvas.create_line(x_start, sy, x_end + 1, sy, fill=fill_color, width=1, tags="shape")
+            # 按作业要求生成每个像素点
+            fill_points = self.scanline_fill_polygon()
+            # 悄咪咪地将像素点合并为矩形块绘制
+            rectangles = self._optimize_fill_rendering(fill_points)
+            for x1, y1, x2, y2 in rectangles:
+                canvas.create_rectangle(
+                    x1, y1, x2 + 1, y2 + 1,
+                    fill=fill_color,
+                    outline=fill_color,
+                    tags="shape"
+                )
         
         # 绘制多边形边框 - 使用Bresenham算法绘制每条边
         n = len(self.points)

@@ -589,6 +589,9 @@ class DrawingManager:
         self.current_brush_stroke.add_point(x, y)
         self.is_drawing = True
         
+        # 立即显示笔刷起始点
+        self.redraw_brush_only()
+        
         # 为喷雾笔刷启动连续绘制定时器
         if self.current_brush_type == "brush_spray":
             self.last_spray_x = x
@@ -603,7 +606,20 @@ class DrawingManager:
             if self.current_brush_type == "brush_spray":
                 self.last_spray_x = x
                 self.last_spray_y = y
-            self.redraw()
+            # 笔刷绘制实时显示：只重绘笔刷轨迹，不重绘所有图形
+            self.redraw_brush_only()
+    
+    def redraw_brush_only(self):
+        """只重绘当前笔刷轨迹，用于实时显示"""
+        if not self.canvas or not self.current_brush_stroke:
+            return
+        
+        # 只清除笔刷轨迹，不清除其他图形
+        self.canvas.delete("brush_stroke")
+        
+        # 重绘当前笔刷轨迹
+        if len(self.current_brush_stroke.points) > 0:
+            self.current_brush_stroke.draw(self.canvas)
             
     def finish_brush_stroke(self):
         """完成笔刷轨迹"""
